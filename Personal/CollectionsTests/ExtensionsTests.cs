@@ -1,12 +1,11 @@
 ﻿using System;
-using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Xunit;
 
 namespace CollectionsTests
 {
-    [TestClass]
     public class ExtensionsTests
     {
-        [TestMethod]
+        [Fact]
         public void TestMethod1()
         {
             throw new Exception();
