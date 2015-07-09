@@ -14,6 +14,20 @@ namespace Collections
             NeitherFullySorted
         }
 
+        private struct BitonicSequence
+        {
+            public readonly int LeftIndexInclusive;
+            public readonly int RightIndexInclusive;
+            public readonly int HighPointIndexInclusive;
+
+            public BitonicSequence(int leftIndexInclusive, int rightIndexInclusive, int highPointIndexInclusive)
+            {
+                this.LeftIndexInclusive = leftIndexInclusive;
+                this.RightIndexInclusive = rightIndexInclusive;
+                this.HighPointIndexInclusive = highPointIndexInclusive;
+            }
+        }
+
         /// <summary>
         /// Performs a 'natural' merge sort on the given array.  A 'natural' merge sort is an 
         /// 'adaptive' version of the merge sort algorithm.  i.e. it is a sort that performs
@@ -83,6 +97,9 @@ namespace Collections
 
             var source = values;
             var destination = tempStorage;
+
+            //var sourceBitonicSequences = new List<BitonicSequence>();
+            //var destinationBitonicSequences = new List<BitonicSequence>();
 
             while (true)
             {
