@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 
@@ -14,18 +15,28 @@ namespace Collections
             NeitherFullySorted
         }
 
+        [DebuggerDisplay("{DebuggerDisplay}")]
         private struct BitonicSequence
         {
             public readonly int LeftIndexInclusive;
-            public readonly int RightIndexInclusive;
             public readonly int HighPointIndexInclusive;
+            public readonly int RightIndexInclusive;
 
-            public BitonicSequence(int leftIndexInclusive, int rightIndexInclusive, int highPointIndexInclusive)
+            public BitonicSequence(int leftIndexInclusive, int highPointIndexInclusive, int rightIndexInclusive)
             {
                 this.LeftIndexInclusive = leftIndexInclusive;
                 this.RightIndexInclusive = rightIndexInclusive;
                 this.HighPointIndexInclusive = highPointIndexInclusive;
             }
+
+            private string DebuggerDisplay => $"({LeftIndexInclusive},{HighPointIndexInclusive},{RightIndexInclusive})";
+
+            //internal BitonicSequence Order(bool ascending)
+            //{
+            //    return ascending
+            //        ? new BitonicSequence(this.LeftIndexInclusive, this.RightIndexInclusive, this.RightIndexInclusive)
+            //        : new BitonicSequence(this.LeftIndexInclusive, this.LeftIndexInclusive, this.RightIndexInclusive);
+            //}
         }
 
         /// <summary>
@@ -93,63 +104,126 @@ namespace Collections
         public static void NaturalMergeSort<T>(this T[] values, Comparison<T> compare)
         {
             var length = values.Length;
+            if (length <= 1)
+            {
+                return;
+            }
+
             var tempStorage = new T[length];
 
             var source = values;
             var destination = tempStorage;
 
-            //var sourceBitonicSequences = new List<BitonicSequence>();
-            //var destinationBitonicSequences = new List<BitonicSequence>();
+            var sourceBitonicSequences = new List<BitonicSequence>();
+            var destinationBitonicSequences = new List<BitonicSequence>();
 
-            while (true)
+            ComputeBitonicSequences(source, compare, sourceBitonicSequences);
+
+            // As long as their are multiple bitonic sequences, keep taking pairs of them to
+            // form new, larger bitonic sequences.  Each time through this loop this will cause
+            // us to at least halve the number of sequences we have.  So there will be log(s) 
+            // iterations of this loop in the worst case.
+            //
+            // Note: we'll try to be smarter than this in some cases as well.  If a subsequent
+            // bitonic sequence is entire above or below the sequence we're looking at, then
+            // we can create one long ascending or descending run without having to compare
+            // all the constituent elements of both sequences.   i.e. if we have:
+            //
+            //      1, 3, 5, 4, 2     and     6, 8, 10, 9, 7, 
+            //
+            // then we can trivially determine that the second sequence is above the first 
+            // (since we know the high and low values of a bitonic sequence in constant time).
+            // As such, instead of producing and ascending sequence followed by a descending
+            // one, i.e.:
+            //
+            //      1, 2, 3, 4, 5, 10, 9, 8, 7, 6
+            //
+            // We instead produce the ascending list for both, producing:
+            //
+            //      1, 2, 3, 4, 5, 6, 7, 8, 9, 10
+            while (sourceBitonicSequences.Count >= 2)
             {
-                // Find all the bitonic sequences in 'source' and merge pairs of them together
-                // into 'destination'.  This will halve the number of bitonic sequences and can be 
-                // done in linear time.
-                var sortAnalysis = FindAndMergeBitonicSequences(source, destination, length, compare);
-                switch (sortAnalysis)
+                destinationBitonicSequences.Clear();
+
+                CombineSuccessiveSequences(compare, source, destination, sourceBitonicSequences, destinationBitonicSequences);
+
+                // Swap where we're moving things, and keep going.
+                Swap(ref source, ref destination);
+                Swap(ref sourceBitonicSequences, ref destinationBitonicSequences);
+            }
+
+            // We're down to a single bitonic sequence. If it is already sorted, then we only need
+            // to copy those sorted elements back into the 'values' array.
+            var sequence = sourceBitonicSequences[0];
+            if (IsSortedAscending(sequence))
+            {
+                Copy(source, values);
+            }
+            else
+            {
+                // Otherwise, do the final sort and copy the result to the 'values' array.
+                MergeSort(source, destination, sequence, compare, ascending: true);
+                Copy(destination, values);
+            }
+        }
+
+        private static bool IsSortedAscending(BitonicSequence sequence)
+        {
+            return sequence.HighPointIndexInclusive == sequence.RightIndexInclusive;
+        }
+
+        private static void Swap<T>(ref T source, ref T destination)
+        {
+            var temp = source;
+            source = destination;
+            destination = temp;
+        }
+
+        private static void CombineSuccessiveSequences<T>(Comparison<T> compare, T[] source, T[] destination, List<BitonicSequence> sourceBitonicSequences, List<BitonicSequence> destinationBitonicSequences)
+        {
+            var bitonicSequenceCount = sourceBitonicSequences.Count;
+
+            // Jump through our existing bitonic sequences two at a time.
+            for (var currentSequenceIndex = 0; currentSequenceIndex < bitonicSequenceCount; currentSequenceIndex += 2)
+            {
+                var currentSequence = sourceBitonicSequences[currentSequenceIndex];
+
+                if (currentSequenceIndex == bitonicSequenceCount - 1)
                 {
-                    // Once either the source or destination is determined to be sorted, then we're
-                    // done. We just need to copy the sorted items back into 'values'.  (Of course,
-                    // if 'values' *is* the sorted array, then we don't need to do anything).
-                    case SortAnalysis.SourceFullySorted:
-                        Copy(from: source, to: values);
-                        return;
-                    case SortAnalysis.DestinationFullySorted:
-                        Copy(from: destination, to: values);
-                        return;
+                    // We're on the last bitonic sequence.  Merge it into destination in the 
+                    // correct direction.
+                    MergeSort(source, destination, currentSequence, compare, ascending: true);
+                    destinationBitonicSequences.Add(new BitonicSequence(
+                        currentSequence.LeftIndexInclusive, currentSequence.RightIndexInclusive, currentSequence.RightIndexInclusive));
+                    break;
                 }
 
-                // Now, flip source and destination and repeat.
-                var temp = destination;
-                destination = source;
-                source = temp;
+                // First merge sort the current bitonic sequence and place into 'destination'
+                // in the right order.
+                var nextSequence = sourceBitonicSequences[currentSequenceIndex + 1];
+                MergeSort(source, destination, currentSequence, compare, ascending: true);
+                MergeSort(source, destination, nextSequence, compare, ascending: false);
+
+                // The highpoint will either be the right side of the ascending sequence, or 
+                // the left side of the descending sequence (whichever is has the greater value
+                // at that index).
+                var highPoint = compare(destination[currentSequence.RightIndexInclusive], destination[nextSequence.LeftIndexInclusive]) >= 0
+                    ? currentSequence.RightIndexInclusive
+                    : nextSequence.LeftIndexInclusive;
+                destinationBitonicSequences.Add(new BitonicSequence(
+                    currentSequence.LeftIndexInclusive, highPoint, nextSequence.RightIndexInclusive));
             }
         }
 
-        private static void Copy<T>(T[] from, T[] to)
+        private static void ComputeBitonicSequences<T>(T[] values, Comparison<T> compare, List<BitonicSequence> bitonicSequences)
         {
-            if (from == to)
-            {
-                // No need to copy if the destination is the same as the source.
-                // TODO(cyrusn): Find out if this optimization is needed.  Does the BCL already do this?
-                return;
-            }
+            var length = values.Length;
 
-            Array.Copy(sourceArray: from, destinationArray: to, length: to.Length);
-        }
-
-        private static SortAnalysis FindAndMergeBitonicSequences<T>(T[] source, T[] destination, int length, Comparison<T> compare)
-        {
             // The left side (inclusive) of the current bitonic sequence.
             var left = 0;
 
             // The right side (exclusive) of the current bitonic sequence.
             var right = 0;
-
-            // If we want to create an ascending sequence out of the current bitonic sequence, or a 
-            // descending one.  We flip this after every bitonic sequence we see.
-            var ascending = true;
 
             // Find successive bitonic sequences.  The first bitonic sequence we see, we'll merge 
             // into 'destination' in ascending order.  The second bitonic sequene we see, we'll 
@@ -168,18 +242,10 @@ namespace Collections
                 T temp;
                 do
                 {
-                    temp = source[right];
+                    temp = values[right];
                     right++;
                 }
-                while (right < length && compare(temp, source[right]) <= 0);
-
-                if (left == 0 && right == length)
-                {
-                    // We are in the first bitonic sequence, and the ascending section is the 
-                    // length of the entire source.  Our source is fully sorted, and there's
-                    // nothing we need to do at this point.
-                    return SortAnalysis.SourceFullySorted;
-                }
+                while (right < length && compare(temp, values[right]) <= 0);
 
                 // The index of the highest value in the bitonic sequence.  All values from 
                 // [left, highPoint) will be less than or equal to this value, and will be in 
@@ -188,33 +254,30 @@ namespace Collections
                 var highPoint = right - 1;
 
                 // Now the longest descending sequence.
-                while (right < length && compare(temp, source[right]) >= 0)
+                while (right < length && compare(temp, values[right]) >= 0)
                 {
-                    temp = source[right];
+                    temp = values[right];
                     right++;
                 }
 
-                // Merge this bitonic sequence into a single ascending or descending sequence.
-                // Note: in 'Merge' 'right' is *inclusive*, so we subtract '1' here.
-                Merge(source, destination, left, highPoint, right - 1, ascending, compare);
-
-                // Find the next bitonic sequence.  This time merging it the opposite direction.
-                ascending = !ascending;
+                // Note: in 'BitonicSequence' 'right' is *inclusive*, so we subtract '1' here.
+                bitonicSequences.Add(new BitonicSequence(left, highPoint, right - 1));
             }
-
-            if (left == 0)
-            {
-                // We only had a single bitonic range.  And we merged that single range into 
-                // 'destination'.  'destination' must then be fully sorted at this point.
-                return SortAnalysis.DestinationFullySorted;
-            }
-
-            // We had multiple bitonic ranges in 'source'.  That means 'destination' is not
-            // fully sorted and we still have work to do.
-            return SortAnalysis.NeitherFullySorted;
         }
 
-        private static void Merge<T>(T[] source, T[] destination, int left, int highPoint, int right, bool ascending, Comparison<T> compare)
+        private static void Copy<T>(T[] from, T[] to)
+        {
+            if (from == to)
+            {
+                // No need to copy if the destination is the same as the source.
+                // TODO(cyrusn): Find out if this optimization is needed.  Does the BCL already do this?
+                return;
+            }
+
+            Array.Copy(sourceArray: from, destinationArray: to, length: to.Length);
+        }
+
+        private static void MergeSort<T>(T[] source, T[] destination, BitonicSequence sequence, Comparison<T> compare, bool ascending)
         {
             // Merges a bitonic sequence from the [source_left, source_right] range into 
             // 'destination' (in the same [destination_left, destination_right] range).  The values
@@ -252,6 +315,9 @@ namespace Collections
             // left side until we hit the midpoint since we know it is already sorted and we know
             // there aren't any more values that could be lower.
 
+            var left = sequence.LeftIndexInclusive;
+            var highPoint = sequence.HighPointIndexInclusive;
+            var right = sequence.RightIndexInclusive;
 
             int destinationIndex = ascending ? left : right;
             int increment = ascending ? 1 : -1;

@@ -52,7 +52,7 @@ namespace CollectionsTests
 
                 for (var j = 0; j < 10; j++)
                 {
-                    array.AddRange(CreateBitonicSequence(10, j));
+                    array.AddRange(CreateBitonicSequence(10, (10 + i - j) % 10));
                 }
 
                 SortAndCheckArrays(compareInts, array.ToArray());
@@ -63,6 +63,7 @@ namespace CollectionsTests
         public void TestNaturalSortPermutations()
         {
             const int count = 9;
+            var testCount = 0;
             for (var i = 0; i < count; i++)
             {
                 var original = new int[i];
@@ -71,10 +72,13 @@ namespace CollectionsTests
 
                 do
                 {
+                    testCount++;
                     SortAndCheckArrays(compareInts, original, copy1, copy2);
                 }
                 while (Increment(original, i - 1));
             }
+
+            Console.ReadLine();
         }
 
         private void SortAndCheckArrays(Comparison<int> compare, int[] original, int[] copy1 = null, int[] copy2 = null)
