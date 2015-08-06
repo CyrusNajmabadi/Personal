@@ -6,91 +6,73 @@ using System.Threading.Tasks;
 
 namespace WindowsFormsApplication1
 {
-    internal class BrownianTree
+    internal abstract class AbstractBrownianTree
     {
-        private readonly int width;
-        private readonly int height;
-        private readonly int maxTouches;
-        private readonly int lineLength;
-        private readonly Action<int, int> callback;
+        protected const int DefaultMaxTouches = 8;
+        protected const int DefaultLineLength = 1;
+        protected const double TwoPi = Math.PI * 2;
 
-        public BrownianTree(int width, int height, int maxTouches = 8, int lineLength = 1, Action<int, int> callback = null)
+        protected readonly int width;
+        protected readonly int height;
+        protected readonly int maxTouches;
+        protected readonly int lineLength;
+        protected readonly Action<int, int> callback;
+        protected readonly Random random;
+        protected readonly bool[,] values;
+
+        protected AbstractBrownianTree(int width, int height, int maxTouches, int lineLength, Action<int, int> callback, int? seed)
         {
+            this.random = seed == null ? new Random() : new Random(seed.Value);
             this.width = width;
             this.height = height;
             this.maxTouches = maxTouches;
             this.lineLength = lineLength;
             this.callback = callback;
+            this.values = new bool[width, height];
         }
 
-        public bool[,] Generate1()
+        public bool[,] Generate()
         {
-            var values = new bool[width, height];
-
-            var halfWidth = width / 2;
-            var halfHeight = height / 2;
-
-            // Initialize the point in the center.
-            values[halfWidth, halfHeight] = true;
-            callback(halfWidth, halfHeight);
-
-            var outerRadius = Math.Min(halfWidth, halfHeight);
-            var innerRadius = (int)(outerRadius * 0.95);
-            var innerRadiusSquared = innerRadius * innerRadius;
-
-            var TwoPi = Math.PI * 2;
-            var random = new Random();
             while (true)
             {
-                var angle = random.NextDouble() * TwoPi;
-
-                var x = (int)(Math.Cos(angle) * outerRadius) + halfWidth;
-                var y = (int)(Math.Sin(angle) * outerRadius) + halfHeight;
+                int x, y;
+                GetStartingPoint(out x, out y);
 
                 while (true)
                 {
-                    var newX = x + NextDirection(random);
-                    var newY = y + NextDirection(random);
-
-                    if (newX < 0 || newX >= width ||
-                        newY < 0 || newY >= height)
-                    {
-                        // Walked off the side.  Place another random point.
-                        continue;
-                    }
+                    int newX, newY;
+                    MovePoint(x, y, out newX, out newY);
 
                     if (newX == x && newY == y)
                     {
                         continue;
                     }
 
+                    if (newX < 0 || newX >= width ||
+                        newY < 0 || newY >= height)
+                    {
+                        break;
+                    }
+
                     // Hit an existing point.
                     var existingValue = values[newX, newY];
                     if (existingValue)
                     {
-                        if (TouchCount(values, x, y) > maxTouches || !TryPlaceLine(values, newX, newY, x, y))
+                        if (TryPlacePoints(newX, newY, x, y))
                         {
-                            break;
-                        }
-
-                        // If we're on the edge, we're done.  Otherwise,
-                        // keep going.
-                        var deltaX = x - halfWidth;
-                        var deltaY = y - halfHeight;
-                        var deltaXSquared = deltaX * deltaX;
-                        var deltaYSquared = deltaY * deltaY;
-
-                        if (deltaXSquared + deltaYSquared > innerRadiusSquared)
-                        {
-                            return values;
+                            if (Stop(x, y))
+                            {
+                                return values;
+                            }
                         }
 
                         break;
                     }
-                    else
+
+                    if (HitEdge(newX, newY))
                     {
-                        //graphics.FillRectangle(Brushes.White, x, y, 1, 1);
-                        //pictureBox1.Invalidate();
+                        // Walked out of bounds.  Start over.
+                        break;
                     }
 
                     // Keep walking
@@ -100,18 +82,24 @@ namespace WindowsFormsApplication1
             }
         }
 
-        private bool TryPlaceLine(bool[,] values, int fromX, int fromY, int toX, int toY)
-        {
-                var deltaX = toX - fromX;
-                var deltaY = toY - fromY;
+        protected abstract void GetStartingPoint(out int x, out int y);
+        protected abstract void MovePoint(int x, int y, out int newX, out int newY);
+        protected abstract bool HitEdge(int newX, int newY);
+        protected abstract bool TryPlacePoints(int newX, int newY, int x, int y);
+        protected abstract bool Stop(int x, int y);
 
-                for (var i = 1; i <= lineLength; i++)
+        protected bool TryPlaceLine(int fromX, int fromY, int toX, int toY)
+        {
+            var deltaX = toX - fromX;
+            var deltaY = toY - fromY;
+
+            for (var i = 1; i <= lineLength; i++)
+            {
+                if (TouchCount(toX + i * deltaX, toY + i * deltaY) != 0)
                 {
-                    if (TouchCount(values, toX + i * deltaX, toY + i * deltaY) != 0)
-                    {
-                        return false;
-                    }
+                    return false;
                 }
+            }
 
             for (var i = 0; i < lineLength; i++)
             {
@@ -121,108 +109,206 @@ namespace WindowsFormsApplication1
                 callback(newX, newY);
             }
 
+            return true;
+        }
 
+        protected int TouchCount(int x, int y)
+        {
+            var count =
+                Value(x - 1, y - 1) +
+                Value(x - 1, y) +
+                Value(x - 1, y + 1) +
+
+                Value(x, y - 1) +
+                Value(x, y + 1) +
+
+                Value(x + 1, y - 1) +
+                Value(x + 1, y) +
+                Value(x + 1, y + 1);
+            return count;
+        }
+
+        private int Value(int x, int y)
+        {
+            if (x >= 0 && x < width &&
+                y >= 0 && y < height &&
+                values[x, y])
+            {
+                return 1;
+            }
+
+            return 0;
+        }
+
+        protected int NextDirection()
+        {
+            return random.Next(3) - 1;
+        }
+    }
+
+    internal class BrownianTree1 : AbstractBrownianTree
+    {
+        private readonly int halfWidth;
+        private readonly int halfHeight;
+        private readonly int innerRadiusSquared;
+        private readonly int outerRadius;
+
+        public BrownianTree1(int width, int height, int maxTouches = DefaultMaxTouches, int lineLength = DefaultLineLength, Action<int, int> callback = null, int? seed = null)
+            : base(width, height, maxTouches, lineLength, callback, seed)
+        {
+            this.halfWidth = width / 2;
+            this.halfHeight = height / 2;
+
+            // Initialize the point in the center.
+            values[halfWidth, halfHeight] = true;
+            callback(halfWidth, halfHeight);
+
+            this.outerRadius = Math.Min(halfWidth, halfHeight);
+            var innerRadius = (int)(outerRadius * 0.95);
+            this.innerRadiusSquared = innerRadius * innerRadius;
+        }
+
+        protected override void GetStartingPoint(out int x, out int y)
+        {
+            var angle = random.NextDouble() * TwoPi;
+
+            x = (int)(Math.Cos(angle) * outerRadius) + halfWidth;
+            y = (int)(Math.Sin(angle) * outerRadius) + halfHeight;
+        }
+
+        protected override void MovePoint(int x, int y, out int newX, out int newY)
+        {
+            newX = x + NextDirection();
+            newY = y + NextDirection();
+        }
+
+        protected override bool HitEdge(int newX, int newY)
+        {
+            return false;
+        }
+
+        protected override bool TryPlacePoints(int newX, int newY, int x, int y)
+        {
+            if (TouchCount(x, y) > maxTouches || !TryPlaceLine(newX, newY, x, y))
+            {
+                return false;
+            }
 
             return true;
         }
 
-        private int TouchCount(bool[,] values, int x, int y)
+        protected override bool Stop(int x, int y)
         {
-            var count =
-                Value(values, x - 1, y - 1) +
-                Value(values, x - 1, y) +
-                Value(values, x - 1, y + 1) +
+            // If we're on the edge, we're done.  Otherwise,
+            // keep going.
+            var deltaX = x - halfWidth;
+            var deltaY = y - halfHeight;
+            var deltaXSquared = deltaX * deltaX;
+            var deltaYSquared = deltaY * deltaY;
 
-                Value(values, x, y - 1) +
-                Value(values, x, y + 1) +
+            if (deltaXSquared + deltaYSquared > innerRadiusSquared)
+            {
+                return true;
+            }
 
-                Value(values, x + 1, y - 1) +
-                Value(values, x + 1, y) +
-                Value(values, x + 1, y + 1);
-            return count;
+            return false;
         }
+    }
 
-        private int Value(bool[,] values, int x, int y)
+    internal class BrownianTree2 : AbstractBrownianTree
+    {
+        private readonly int halfWidth;
+        private readonly int halfHeight;
+        private readonly double outerRadiusSquared;
+
+        public BrownianTree2(int width, int height, int maxTouches = DefaultMaxTouches, int lineLength = DefaultLineLength, Action<int, int> callback = null, int? seed = null)
+            : base(width, height, maxTouches, lineLength, callback, seed)
         {
-            return values[x, y] ? 1 : 0;
-        }
-
-        public bool[,] Generate2()
-        {
-            var values = new bool[width, height];
-
-            var halfWidth = width / 2;
-            var halfHeight = height / 2;
+            this.halfWidth = width / 2;
+            this.halfHeight = height / 2;
 
             var outerRadius = Math.Min(halfWidth, halfHeight) * 0.95;
-            var outerRadiusSquared = (int)outerRadius * outerRadius;
-
-            var random = new Random();
-            while (true)
-            {
-                var x = halfWidth;
-                var y = halfHeight;
-
-                while (true)
-                {
-                    var newX = x + NextDirection(random);
-                    var newY = y + NextDirection(random);
-
-                    if (newX < 0 || newX >= width ||
-                        newY < 0 || newY >= height)
-                    {
-                        throw new Exception();
-                        // Walked off the side.  Place another random point.
-                        // continue;
-                    }
-
-                    if (newX == x && newY == y)
-                    {
-                        continue;
-                    }
-
-
-                    var deltaX = newX - halfWidth;
-                    var deltaY = newY - halfHeight;
-                    var sumSquared = deltaX * deltaX + deltaY * deltaY;
-                    var hitCircle = sumSquared >= outerRadiusSquared;
-                    if (hitCircle)
-                    {
-                        values[x, y] = true;
-                        callback(x, y);
-                        break;
-                    }
-
-                        // Hit an existing point.
-                    var hitSomething = values[newX, newY];
-
-                    if (hitSomething)
-                    {
-                        if (TouchCount(values, x, y) > maxTouches || TryPlaceLine(values, newX, newY, x, y))
-                        {
-                            break;
-                        }
-
-                        // If we're at the middle, we're done.  Otherwise,
-                        // keep going.
-                        if (x == halfWidth && y == halfHeight)
-                        {
-                            return values;
-                        }
-
-                        break;
-                    }
-
-                    // Keep walking
-                    x = newX;
-                    y = newY;
-                }
-            }
+            this.outerRadiusSquared = (int)outerRadius * outerRadius;
         }
 
-        private static int NextDirection(Random random)
+        protected override void GetStartingPoint(out int x, out int y)
         {
-            return random.Next(3) - 1;
+            x = halfWidth;
+            y = halfHeight;
+        }
+
+        protected override void MovePoint(int x, int y, out int newX, out int newY)
+        {
+            newX = x + NextDirection();
+            newY = y + NextDirection();
+
+            //if (newX < 0 || newX >= width ||
+            //    newY < 0 || newY >= height)
+            //{
+            //    throw new Exception();
+            //    // Walked off the side.  Place another random point.
+            //    // continue;
+            //}
+        }
+
+        protected override bool HitEdge(int newX, int newY)
+        {
+            var deltaX = newX - halfWidth;
+            var deltaY = newY - halfHeight;
+            var sumSquared = deltaX * deltaX + deltaY * deltaY;
+            var hitCircle = sumSquared >= outerRadiusSquared;
+            if (hitCircle)
+            {
+                values[newX, newY] = true;
+                callback(newX, newY);
+                return true;
+            }
+
+            return false;
+        }
+
+        protected override bool TryPlacePoints(int newX, int newY, int x, int y)
+        {
+            if (TouchCount(x, y) > maxTouches || TryPlaceLine(newX, newY, x, y))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        protected override bool Stop(int x, int y)
+        {
+
+            // If we're at the middle, we're done.  Otherwise,
+            // keep going.
+            if (x == halfWidth && y == halfHeight)
+            {
+                return true;
+            }
+
+            return false;
+        }
+    }
+
+    internal class BrownianTree3 : BrownianTree2
+    {
+        public BrownianTree3(int width, int height, int maxTouches = DefaultMaxTouches, int lineLength = DefaultLineLength, Action<int, int> callback = null, int? seed = default(int?)) 
+            : base(width, height, maxTouches, lineLength, callback, seed)
+        {
+        }
+
+        protected override void GetStartingPoint(out int x, out int y)
+        {
+            var r = random.NextDouble();
+            var theta = random.NextDouble() * TwoPi;
+
+            var sqrtR = Math.Sqrt(r);
+            var unitX = (sqrtR * Math.Cos(theta) + 1) / 2;
+            var unitY = (sqrtR * Math.Sin(theta) + 1) / 2;
+
+            x = (int)(width * unitX);
+            y = (int)(height * unitY);
         }
     }
 }

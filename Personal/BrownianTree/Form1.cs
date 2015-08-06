@@ -15,7 +15,24 @@ namespace WindowsFormsApplication1
         public Form1()
         {
             InitializeComponent();
-            Task.Delay(50).ContinueWith(t => BrownianWalk2());
+            Task.Delay(50).ContinueWith(t => BrownianWalk3());
+        }
+
+        public void BrownianWalk1()
+        {
+            int width, height;
+            Graphics graphics;
+            Bitmap bitmap;
+            InitializeBitmap(out width, out height, out graphics, out bitmap);
+
+            var tree = new BrownianTree1(width, height, maxTouches: 1, lineLength: 5, callback: (x, y) =>
+            {
+                graphics.FillRectangle(Brushes.White, x, y, 1, 1);
+                // DrawPoints(graphics, values, x, y, newX, newY);
+                pictureBox1.Invalidate();
+            });
+
+            tree.Generate();
         }
 
         public void BrownianWalk2()
@@ -25,31 +42,29 @@ namespace WindowsFormsApplication1
             Bitmap bitmap;
             InitializeBitmap(out width, out height, out graphics, out bitmap);
 
-            var tree = new BrownianTree(width, height, maxTouches: 1, lineLength: 5, callback: (x, y) =>
+            var tree = new BrownianTree2(width, height, maxTouches: 1, lineLength: 5, callback: (x, y) =>
             {
                 graphics.FillRectangle(Brushes.White, x, y, 1, 1);
                 // DrawPoints(graphics, values, x, y, newX, newY);
                 pictureBox1.Invalidate();
             });
-            tree.Generate2();
+            tree.Generate();
         }
 
-        public void BrownianWalk1()
+        public void BrownianWalk3()
         {
-
             int width, height;
             Graphics graphics;
             Bitmap bitmap;
             InitializeBitmap(out width, out height, out graphics, out bitmap);
 
-            var tree = new BrownianTree(width, height, maxTouches: 1, lineLength: 5, callback:  (x, y) =>
+            var tree = new BrownianTree3(width, height, maxTouches: 1, lineLength: 5, callback: (x, y) =>
             {
                 graphics.FillRectangle(Brushes.White, x, y, 1, 1);
                 // DrawPoints(graphics, values, x, y, newX, newY);
                 pictureBox1.Invalidate();
             });
-
-            tree.Generate1();
+            tree.Generate();
         }
 
         private void InitializeBitmap(out int width, out int height, 
